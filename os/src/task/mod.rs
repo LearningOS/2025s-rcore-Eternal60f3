@@ -17,6 +17,7 @@ mod task;
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::syscall::{get_syscall_id, SYSCALL_CNT};
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +55,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_cnt: [0; SYSCALL_CNT],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -135,6 +137,34 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// add_curr_task_syscall_cnt
+    fn add_curr_task_syscall_cnt(&self, syscall_code: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let curr_task_id = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_task_id];
+        let syscall_id = get_syscall_id(syscall_code);
+        curr_task.syscall_cnt[syscall_id] += 1;
+    }
+
+    /// get_curr_task_syscall_cnt
+    fn get_curr_task_syscall_cnt(&self, syscall_code: usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let curr_task_id = inner.current_task;
+        let syscall_id = get_syscall_id(syscall_code);
+        inner.tasks[curr_task_id].syscall_cnt[syscall_id]
+    }
+
+    fn curr_task_read_data(&self, pos: *const u8) -> u8 {
+        unsafe { *pos }
+    } 
+
+    fn curr_task_write_data(&self, pos: *const u8, data: u8) {
+        unsafe {
+            let ptr = pos as *mut u8;
+            *ptr = data;
+        }
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +198,24 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// add_curr_task_syscall_cnt
+pub fn add_curr_task_syscall_cnt(syscall_code: usize) {
+    TASK_MANAGER.add_curr_task_syscall_cnt(syscall_code);
+}
+
+/// get_curr_task_syscall_cnt
+pub fn get_curr_task_syscall_cnt(syscall_code: usize) -> isize {
+    TASK_MANAGER.get_curr_task_syscall_cnt(syscall_code)
+}
+
+/// curr_task_read_data
+pub fn curr_task_read_data(pos: *const u8) -> u8 {
+    TASK_MANAGER.curr_task_read_data(pos)
+}
+
+/// curr_task_write_data
+pub fn curr_task_write_data(pos: *const u8, data: u8) {
+    TASK_MANAGER.curr_task_write_data(pos, data);
 }

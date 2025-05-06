@@ -20,6 +20,19 @@ const SYSCALL_YIELD: usize = 124;
 const SYSCALL_GET_TIME: usize = 169;
 /// trace syscall
 const SYSCALL_TRACE: usize = 410;
+/// syscall cnt
+pub const SYSCALL_CNT: usize = 5;
+/// syscall id
+const ALL_SYSCALL: [usize; SYSCALL_CNT] = [SYSCALL_WRITE, SYSCALL_EXIT, SYSCALL_YIELD, SYSCALL_GET_TIME, SYSCALL_TRACE];
+
+/// get_syscall_id
+pub fn get_syscall_id(syscall_code: usize) -> usize {
+    if let Some(id) = ALL_SYSCALL.iter().position(|&id| id == syscall_code) {
+        id
+    } else {
+        panic!("Unsupported syscall_id: {} in get_syscall_id", syscall_code);
+    }
+}
 
 mod fs;
 mod process;
