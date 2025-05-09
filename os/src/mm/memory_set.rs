@@ -54,15 +54,18 @@ impl MemorySet {
     /// 检测某区间的是地址是否都没有进行映射
     fn check_area_any_maped(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
         let range = VPNRange::new(start_vpn, end_vpn);
-        range
-            .into_iter()
-            .any(|vpn| matches!(self.page_table.find_pte(vpn), Some(_)))
+        range.into_iter().any(|vpn| {
+            self.page_table
+                .find_pte(vpn)
+                .map(|pte| pte.is_valid())
+                .unwrap_or(false)
+        })
     }
     /// 申请长度为 len 字节的内存
     pub fn mmap(&mut self, start: usize, len: usize, port: usize) -> Option<()> {
         let end = start + len;
         let (start_va, end_va) = (VirtAddr::from(start), VirtAddr::from(end));
-        if !start_va.aligned() || ((port & !0x7) != 0 || ((port & 0x7) == 0)) {
+        if !start_va.aligned() || (port & !0x7) != 0 || ((port & 0x7) == 0) {
             return None;
         }
         let start_vpn = start_va.floor();
@@ -75,7 +78,7 @@ impl MemorySet {
             return None;
         }
         let perm = MapPermission::U | MapPermission::from_bits((port << 1) as u8).unwrap();
-        self.insert_framed_area(start_vpn.into(), end_vpn.into(), perm);
+        self.insert_framed_area(start_va, end_va, perm);
         return Some(());
     }
     /// 取消到 [start, start + len) 虚存的映射
