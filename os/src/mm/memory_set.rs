@@ -262,6 +262,11 @@ impl MemorySet {
             false
         }
     }
+    /// virtual address transform to physics address
+    pub fn va2pa(&self, va: usize, readable: &mut bool, writable: &mut bool) -> Option<usize> {
+        let va = VirtAddr::from(va);
+        self.page_table.find_pa(va, readable, writable).map(|pa| usize::from(pa))
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

@@ -1,6 +1,6 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
+use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -69,6 +69,10 @@ impl PageTableEntry {
     /// The page pointered by page table entry is executable?
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
+    }
+    /// 用户是否可以访问
+    pub fn is_user(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
     }
 }
 
@@ -154,6 +158,24 @@ impl PageTable {
     /// get the token from the page table
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
+    }
+    /// base VirtAddr get PhysAddr
+    pub fn find_pa(&self, va: VirtAddr, readable: &mut bool, writable: &mut bool) -> Option<PhysAddr> {
+        let vpn = va.floor();
+        if let Some(pte) = self.find_pte(vpn) {
+            if !pte.is_user() {
+                None
+            } else {
+                *readable = pte.readable();
+                *writable = pte.writable();
+                let ppn = pte.ppn();
+                Some(PhysAddr(
+                    usize::from(PhysAddr::from(ppn)) | va.page_offset(),
+                ))
+            }
+        } else {
+            None
+        }
     }
 }
 

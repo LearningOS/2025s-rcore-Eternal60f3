@@ -24,6 +24,24 @@ const SYSCALL_MUNMAP: usize = 215;
 const SYSCALL_MMAP: usize = 222;
 /// trace syscall
 const SYSCALL_TRACE: usize = 410;
+/// syscall count
+pub const SYSCALL_CNT: usize = 8;
+/// syscall id
+const ALL_SYSCALL: [usize; SYSCALL_CNT] = [
+    SYSCALL_WRITE,
+    SYSCALL_EXIT,
+    SYSCALL_YIELD,
+    SYSCALL_GET_TIME,
+    SYSCALL_SBRK,
+    SYSCALL_MUNMAP,
+    SYSCALL_MMAP,
+    SYSCALL_TRACE,
+];
+
+/// get_syscall_id
+pub fn get_syscall_id(syscall_code: usize) -> Option<usize> {
+    ALL_SYSCALL.iter().position(|&id| id == syscall_code) 
+}
 
 mod fs;
 mod process;

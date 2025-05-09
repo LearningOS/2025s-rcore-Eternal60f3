@@ -16,6 +16,7 @@ mod task;
 
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
+use crate::syscall::get_syscall_id;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -153,6 +154,36 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// 在处于内核态的情况向用户态的虚拟地址写入数据
+    fn get_user_pa(&self, va: usize, readable: &mut bool, writable: &mut bool) -> Option<usize> {
+        let inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &inner.tasks[curr_idx];
+        curr_task.memory_set.va2pa(va, readable, writable).map(|pa| pa)
+    }
+
+    /// 增加当前任务的某个系统调用次数
+    fn add_syscall_cnt(&self, syscall_code: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        if let Some(syscall_id) = get_syscall_id(syscall_code) {
+            curr_task.syscalls_cnt[syscall_id] += 1;
+        } else {
+            panic!("syscall_code don't exist");
+        }
+    }
+
+    /// 获取当前任务的某个系统调用的次数
+    fn get_syscall_cnt(&self, syscall_code: usize) -> Option<isize> {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        get_syscall_id(syscall_code).map(|syscall_id| curr_task.syscalls_cnt[syscall_id])
+    }
 }
 
 /// Run the first task in task list.
@@ -202,3 +233,19 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
+
+/// 在处于内核态的情况向用户态的虚拟地址写入数据, 并返回对应的物理地址
+pub fn get_user_pa(va: usize, readable: &mut bool, writable: &mut bool) -> Option<usize> {
+    TASK_MANAGER.get_user_pa(va, readable, writable)
+}
+
+/// 增加当前任务的某个系统调用的次数
+pub fn add_syscall_cnt(syscall_code: usize) {
+    TASK_MANAGER.add_syscall_cnt(syscall_code);
+}
+
+/// 获取当前任务的某个系统调用的次数
+pub fn get_syscall_cnt(syscall_code: usize) -> Option<isize> {
+    TASK_MANAGER.get_syscall_cnt(syscall_code)
+}
+ 

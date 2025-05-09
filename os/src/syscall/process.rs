@@ -1,5 +1,9 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+use crate::task::{
+    change_program_brk, exit_current_and_run_next, get_syscall_cnt, get_user_pa,
+    suspend_current_and_run_next,
+};
+use crate::timer::get_time_us;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -25,16 +29,73 @@ pub fn sys_yield() -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+
+    // 内部封装写用户空间的逻辑
+    fn write_user(addr: usize, value: usize) -> Result<(), ()> {
+        let (mut readable, mut writable) = (false, false);
+        if let Some(pa) = get_user_pa(addr, &mut readable, &mut writable) {
+            if writable {
+                unsafe {
+                    *(pa as *mut usize) = value;
+                }
+                Ok(())
+            } else {
+                Err(())
+            }
+        } else {
+            Err(())
+        }
+    }
+
+    let ts_addr = ts as usize;
+    let ts_next = unsafe { (ts as *mut usize).add(1) as usize };
+
+    if write_user(ts_addr, sec).is_err() || write_user(ts_next, usec).is_err() {
+        -1
+    } else {
+        0
+    }
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    let (mut readable, mut writable) = (false, false);
+    match trace_request {
+        0 => get_user_pa(id, &mut readable, &mut writable)
+            .map(|pa| {
+                if readable {
+                    unsafe { *(pa as *const u8) as isize }
+                } else {
+                    -1
+                }
+            })
+            .unwrap_or(-1),
+
+        1 => get_user_pa(id, &mut readable, &mut writable)
+            .map(|pa| {
+                if writable {
+                    unsafe {
+                        *(pa as *mut u8) = (data & 0xFF) as u8;
+                    }
+                    0
+                } else {
+                    -1
+                }
+            })
+            .unwrap_or(-1),
+
+        2 => get_syscall_cnt(id).unwrap_or(-1),
+
+        _ => -1,
+    }
 }
 
 // YOUR JOB: Implement mmap.
