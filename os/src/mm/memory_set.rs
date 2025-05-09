@@ -51,6 +51,43 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+    /// 检测某区间的是地址是否都没有进行映射
+    fn check_area_any_maped(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
+        let range = VPNRange::new(start_vpn, end_vpn);
+        range
+            .into_iter()
+            .any(|vpn| matches!(self.page_table.find_pte(vpn), Some(_)))
+    }
+    /// 申请长度为 len 字节的内存
+    pub fn mmap(&mut self, start: usize, len: usize, port: usize) -> Option<()> {
+        let end = start + len;
+        let (start_va, end_va) = (VirtAddr::from(start), VirtAddr::from(end));
+        if !start_va.aligned() || ((port & !0x7) != 0 || ((port & 0x7) == 0)) {
+            return None;
+        }
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        // let tmp = VirtPageNum::from(end_vpn.0 - 1);
+        // if (end & (PAGE_SIZE - 1)) == 0 && start_vpn == tmp {
+        //     end_vpn = start_vpn
+        // }
+        if self.check_area_any_maped(start_vpn, end_vpn) {
+            return None;
+        }
+        let perm = MapPermission::U | MapPermission::from_bits((port << 1) as u8).unwrap();
+        self.insert_framed_area(start_vpn.into(), end_vpn.into(), perm);
+        return Some(());
+    }
+    /// 取消到 [start, start + len) 虚存的映射
+    pub fn munmap(&mut self, start: usize, len: usize) -> Option<()> {
+        self.areas
+            .iter_mut()
+            .find(|area| {
+                VirtAddr::from(area.vpn_range.get_start()) == VirtAddr::from(start)
+                    && area.vpn_range.get_end() == VirtAddr::from(start + len).ceil()
+            })
+            .map(|area| area.unmap(&mut self.page_table))
+    }
     /// Assume that no conflicts.
     pub fn insert_framed_area(
         &mut self,
@@ -265,7 +302,9 @@ impl MemorySet {
     /// virtual address transform to physics address
     pub fn va2pa(&self, va: usize, readable: &mut bool, writable: &mut bool) -> Option<usize> {
         let va = VirtAddr::from(va);
-        self.page_table.find_pa(va, readable, writable).map(|pa| usize::from(pa))
+        self.page_table
+            .find_pa(va, readable, writable)
+            .map(|pa| usize::from(pa))
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory

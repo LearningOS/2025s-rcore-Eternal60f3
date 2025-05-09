@@ -160,7 +160,10 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         let curr_idx = inner.current_task;
         let curr_task = &inner.tasks[curr_idx];
-        curr_task.memory_set.va2pa(va, readable, writable).map(|pa| pa)
+        curr_task
+            .memory_set
+            .va2pa(va, readable, writable)
+            .map(|pa| pa)
     }
 
     /// 增加当前任务的某个系统调用次数
@@ -183,6 +186,23 @@ impl TaskManager {
         let curr_task = &mut inner.tasks[curr_idx];
 
         get_syscall_id(syscall_code).map(|syscall_id| curr_task.syscalls_cnt[syscall_id])
+    }
+
+    /// 申请长度为 len 字节的内存
+    fn mmap(&self, start: usize, len: usize, port: usize) -> Option<()> {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        curr_task.memory_set.mmap(start, len, port)
+    }
+    /// 取消到 [start, start + len) 虚存的映射
+    pub fn munmap(& self, start: usize, len: usize) -> Option<()> {
+        let mut inner = self.inner.exclusive_access();
+        let curr_idx = inner.current_task;
+        let curr_task = &mut inner.tasks[curr_idx];
+
+        curr_task.memory_set.munmap(start, len)
     }
 }
 
@@ -248,4 +268,13 @@ pub fn add_syscall_cnt(syscall_code: usize) {
 pub fn get_syscall_cnt(syscall_code: usize) -> Option<isize> {
     TASK_MANAGER.get_syscall_cnt(syscall_code)
 }
- 
+
+/// 申请长度为 len 字节的内存
+pub fn mmap(start: usize, len: usize, port: usize) -> Option<()> {
+    TASK_MANAGER.mmap(start, len, port)
+}
+
+/// 取消到 [start, start + len) 虚存的映射
+pub fn munmap(start: usize, len: usize) -> Option<()> {
+    TASK_MANAGER.munmap(start, len)
+}
